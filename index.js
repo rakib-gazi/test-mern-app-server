@@ -7,9 +7,15 @@ const { MongoClient, ServerApiVersion } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === "production";
+
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: [
+      "http://localhost:5173",
+      /\.localhost:5173$/, 
+      "https://shop-hub-auth.netlify.app", 
+      /\.shop-hub-auth\.netlify\.app$/ 
+    ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Authorization", "Content-Type"],
     credentials: true,
@@ -118,7 +124,7 @@ async function run() {
           httpOnly: true,
           secure: isProduction,
           sameSite: isProduction ? "None" : "Lax",
-          domain: ".localhost",
+          domain: isProduction ? ".mernapp.com" : "localhost",
           maxAge: remember ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000,
         })
         .send({ success: true, user: userData });
