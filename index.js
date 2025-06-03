@@ -10,12 +10,17 @@ const isProduction = process.env.NODE_ENV === "production";
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      /\.localhost:5173$/, 
-      "https://shop-hub-auth.netlify.app", 
-      /\.shop-hub-auth\.netlify\.app$/ 
-    ],
+    origin: function (origin, callback) {
+      if (
+        !origin ||
+        origin === "http://localhost:5173" ||
+        /^http:\/\/[a-z0-9-]+\.localhost:5173$/.test(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Authorization", "Content-Type"],
     credentials: true,
@@ -42,8 +47,9 @@ async function run() {
     // verify accesss token
     app.post("/auth/verify-token", async (req, res) => {
       const token = req.cookies["Auth-token"];
+      console.log(token);
       if (!token) {
-        return res.status(401).json({ message: "No token provided" });
+        return res.send({ success: false, message: "No token provided" });
       }
 
       jwt.verify(
@@ -57,14 +63,22 @@ async function run() {
           const user = await userCollection.findOne({
             username: decoded.username,
           });
+
           if (!user) {
             return res.status(401).json({ message: "User not found" });
           }
 
-          res.json({ user });
+          // Return only safe user info
+          const safeUser = {
+            username: user.username,
+            shops: user.shops,
+          };
+
+          res.json({ user: safeUser });
         }
       );
     });
+
     // users api for sign up
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -121,13 +135,23 @@ async function run() {
       });
       res
         .cookie("Auth-token", token, {
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? "None" : "Lax",
-          domain: isProduction ? ".mernapp.com" : "localhost",
-          maxAge: remember ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000,
+          httpOnly: false,
+          secure: isProduction, // true for HTTPS in production
+          sameSite: isProduction ? "None" : "Lax", // "None" allows cross-site in prod
+          domain: ".localhost", // <- SHARE COOKIE WITH SUBDOMAINS
+          path: "/", // <- share across entire site
+          maxAge: remember ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000, // 7 days or 30 mins
         })
         .send({ success: true, user: userData });
+
+      // res
+      //   .cookie("Auth-token", token, {
+      //     httpOnly: true,
+      //     secure: isProduction,
+      //     sameSite: isProduction ? "None" : "Lax",
+      //     maxAge: remember ? 7 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000,
+      //   })
+      //   .send({ success: true, user: userData });
     });
     // user api for sign out
     app.post("/auth/signout", (req, res) => {
@@ -136,14 +160,21 @@ async function run() {
           httpOnly: true,
           secure: isProduction,
           sameSite: isProduction ? "None" : "Lax",
+          path: "/",
         })
         .json({ success: true, message: "Signed out successfully" });
+
+      // res
+      //   .clearCookie("Auth-token", {
+      //     httpOnly: true,
+      //     secure: isProduction,
+      //     sameSite: isProduction ? "None" : "Lax",
+      //   })
+      //   .json({ success: true, message: "Signed out successfully" });
     });
   } finally {
   }
 }
 run();
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
+app.listen(port, () => {});
